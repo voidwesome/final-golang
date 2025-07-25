@@ -2,48 +2,21 @@ package main
 
 import (
 	"log"
-	"net/http"
 	"os"
 
-	"final-golang/pkg/api"
 	"final-golang/pkg/db"
+	"final-golang/pkg/server"
 )
 
-var port = os.Getenv("TODO_PORT")
-var dbPath = os.Getenv("TODO_DBFILE")
-
 func main() {
-	// Переменная окружения для БД
-	if dbPath == "" {
-		dbPath = "pkg/db/scheduler.db"
+	dbFile := os.Getenv("TODO_DBFILE")
+	if dbFile == "" {
+		dbFile = "scheduler.db"
 	}
-
-	// Соединение с БД
-	if err := db.Init(dbPath); err != nil {
-		log.Fatalf("Не удалось инициализировать БД: %v", err)
+	if err := db.Init(dbFile); err != nil {
+		log.Fatalf("db init error: %v", err)
 	}
-
-	// Передаем соединение в API
-	api.DbConn = db.DB
-
-	// Закрываем соединение с БД при завершении
-	defer db.Close()
-
-	// Регистрация эндпоинтов
-	api.Init()
-
-	// Настройка статики
-	fs := http.FileServer(http.Dir("./web"))
-	http.Handle("/", fs)
-
-	// Запуск сервера
-	if port == "" {
-		port = "7540"
-	}
-	addr := ":" + port
-
-	log.Printf("Сервер запущен на %s", addr)
-	if err := http.ListenAndServe(addr, nil); err != nil {
-		log.Fatalf("Ошибка запуска сервера: %v", err)
+	if err := server.Run(); err != nil {
+		log.Fatalf("server run error: %v", err)
 	}
 }

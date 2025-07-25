@@ -1,55 +1,61 @@
 package api
 
 import (
-	"database/sql"
 	"encoding/json"
-	"final-golang/pkg/db"
+	"errors"
+	"fmt"
 	"net/http"
-	"strconv"
 	"time"
+
+	"final-golang/pkg/db"
 )
 
-var DbConn *sql.DB
-
-const dateLayout = "20060102"
-
-func AddTaskHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Only POST allowed", http.StatusMethodNotAllowed)
+func addTaskHandler(w http.ResponseWriter, r *http.Request) {
+	var t db.Task
+	if err := json.NewDecoder(r.Body).Decode(&t); err != nil {
+		writeError(w, err, http.StatusBadRequest)
 		return
 	}
-
-	var task db.Task
-	err := json.NewDecoder(r.Body).Decode(&task)
+	// validations
+	if t.Title == "" {
+		writeError(w, errors.New("title required"), http.StatusBadRequest)
+		return
+	}
+	if err := checkDate(&t); err != nil {
+		writeError(w, err, http.StatusBadRequest)
+		return
+	}
+	id, err := db.AddTask(&t)
 	if err != nil {
-		writeJSON(w, errorResponse{Error: "Ошибка десериализации JSON"})
+		writeError(w, err, http.StatusInternalServerError)
 		return
 	}
+	writeJSON(w, map[string]string{"id": fmt.Sprintf("%d", id)})
+}
 
-	// Validate task title (mandatory field)
-	if task.Title == "" {
-		writeJSON(w, errorResponse{Error: "Не указан заголовок задачи"})
-		return
+func checkDate(t *db.Task) error {
+	now := time.Now()
+	if t.Date == "" {
+		t.Date = now.Format(DateLayout)
 	}
-
-	// Handle empty date or "today"
-	if task.Date == "" || task.Date == "today" {
-		task.Date = time.Now().Format(dateLayout)
-	}
-
-	// Validate date and repeat rule
-	err = checkDate(&task)
+	d, err := time.Parse(DateLayout, t.Date)
 	if err != nil {
-		writeJSON(w, errorResponse{Error: err.Error()})
-		return
+		return fmt.Errorf("bad date: %w", err)
 	}
-
-	// Add the task to database (важно!)
-	id, err := db.AddTask(db.DB, &task)
-	if err != nil {
-		writeJSON(w, errorResponse{Error: "Ошибка добавления в базу"})
-		return
+	if t.Repeat != "" {
+		// validate and also get next date (we may need it)
+		next, err := NextDate(now, t.Date, t.Repeat)
+		if err != nil {
+			return err
+		}
+		if !afterNow(d, now) {
+			t.Date = next
+		}
+	} else {
+		// no repeat
+		if !afterNow(d, now) {
+			t.Date = now.Format(DateLayout)
+		}
 	}
-
-	writeJSON(w, map[string]string{"id": strconv.FormatInt(id, 10)})
+	return nil
 }
