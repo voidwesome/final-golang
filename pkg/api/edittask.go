@@ -5,7 +5,7 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/voidwesome/final-golang/pkg/db"
+	"final-golang/pkg/db"
 )
 
 func editTaskHandler(w http.ResponseWriter, r *http.Request) {

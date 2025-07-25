@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/voidwesome/final-golang/pkg/db"
+	"final-golang/pkg/db"
 )
 
 func doneHandler(w http.ResponseWriter, r *http.Request) {

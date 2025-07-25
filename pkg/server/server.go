@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/voidwesome/final-golang/pkg/api"
+	"final-golang/pkg/api"
 )
 
 func Run() error {
