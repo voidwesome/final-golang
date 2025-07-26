@@ -4,204 +4,218 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 )
 
-// afterNow возвращает true, если date > now (по дате без учёта времени)
-func afterNow(date, now time.Time) bool {
-	d1 := time.Date(date.Year(), date.Month(), date.Day(), 0, 0, 0, 0, date.Location())
-	d2 := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-	return d1.After(d2)
+func containsInt(arr []int, v int) bool {
+	for _, x := range arr {
+		if x == v {
+			return true
+		}
+	}
+	return false
 }
 
-// NextDate вычисляет следующую дату задачи с учётом правила repeat
+// NextDate implements all rules: d, y, w, m
 func NextDate(now time.Time, dstart string, repeat string) (string, error) {
-	if repeat == "" {
-		return "", errors.New("repeat string is empty")
+	if strings.TrimSpace(repeat) == "" {
+		return "", errors.New("empty repeat rule")
 	}
-
-	// Парсим дату dstart
-	date, err := time.Parse("20060102", dstart)
+	start, err := time.Parse(DateLayout, dstart)
 	if err != nil {
-		return "", fmt.Errorf("invalid dstart date format: %w", err)
+		return "", fmt.Errorf("bad start date: %w", err)
 	}
 
-	// Разбиваем repeat на части
 	parts := strings.Fields(repeat)
-	if len(parts) == 0 {
-		return "", errors.New("empty repeat")
-	}
-	rule := parts[0]
-
-	switch rule {
+	switch parts[0] {
 	case "d":
-		// Проверяем, что есть второй аргумент - число дней
-		if len(parts) < 2 {
-			return "", errors.New("repeat 'd' requires a day count")
+		if len(parts) != 2 {
+			return "", errors.New("invalid d format")
 		}
-		days, err := strconv.Atoi(parts[1])
-		if err != nil {
-			return "", errors.New("invalid day count in repeat 'd'")
+		n, err := strconv.Atoi(parts[1])
+		if err != nil || n <= 0 || n > 400 {
+			return "", errors.New("invalid d interval")
 		}
-		if days < 1 || days > 400 {
-			return "", errors.New("day count in 'd' must be between 1 and 400")
-		}
-
-		// Прибавляем дни до тех пор, пока date > now
+		t := start
 		for {
-			date = date.AddDate(0, 0, days)
-			if afterNow(date, now) {
-				break
+			t = t.AddDate(0, 0, n)
+			if afterNow(t, now) {
+				return t.Format(DateLayout), nil
 			}
 		}
-		return date.Format("20060102"), nil
-
 	case "y":
-		// Прибавляем год пока дата <= now
+		if len(parts) != 1 {
+			return "", errors.New("invalid y format")
+		}
+		t := start
 		for {
-			date = date.AddDate(1, 0, 0)
-			// Обработка 29 февраля
-			if date.Month() == time.February && date.Day() == 29 {
-				if !afterNow(date, now) {
-					date = date.AddDate(1, 0, 0)
-				}
-			}
-			if afterNow(date, now) {
-				break
+			t = t.AddDate(1, 0, 0)
+			if afterNow(t, now) {
+				return t.Format(DateLayout), nil
 			}
 		}
-		return date.Format("20060102"), nil
-
 	case "w":
-		if len(parts) < 2 {
-			return "", errors.New("repeat 'w' requires week days")
+		// w <1..7,[comma]>
+		if len(parts) != 2 {
+			return "", errors.New("invalid w format")
 		}
-		daysStr := strings.Split(parts[1], ",")
-		days := make([]int, 0, len(daysStr))
-		for _, dayStr := range daysStr {
-			day, err := strconv.Atoi(dayStr)
-			if err != nil || day < 1 || day > 7 {
-				return "", errors.New("invalid week day in repeat 'w'")
+		days, err := parseWeekdays(parts[1])
+		if err != nil {
+			return "", err
+		}
+		// roll from start forward until > now
+		t := start
+		// fast-forward to first > now
+		if !afterNow(t, now) {
+			t = now
+		}
+		for i := 0; i < 800; i++ {
+			t = t.AddDate(0, 0, 1)
+			if afterNow(t, now) && containsWeekday(days, weekdayRU(t.Weekday())) {
+				return t.Format(DateLayout), nil
 			}
-			days = append(days, day)
 		}
-
-		// Находим ближайший день недели
-		date = findNextWeekday(date, now, days)
-		return date.Format("20060102"), nil
-
+		return "", errors.New("cannot find next date for w-rule")
 	case "m":
-		if len(parts) < 2 {
-			return "", errors.New("repeat 'm' requires month days")
+		// m <days list> [months list]
+		if len(parts) < 2 || len(parts) > 3 {
+			return "", errors.New("invalid m format")
 		}
-		daysStr := strings.Split(parts[1], ",")
-		days := make([]int, 0, len(daysStr))
-		for _, dayStr := range daysStr {
-			day, err := strconv.Atoi(dayStr)
+		mlist := []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}
+		var err error
+		days, err := parseMonthDays(parts[1])
+		if err != nil {
+			return "", err
+		}
+		if len(parts) == 3 {
+			mlist, err = parseMonths(parts[2])
 			if err != nil {
-				return "", errors.New("invalid month day in repeat 'm'")
+				return "", err
 			}
-			days = append(days, day)
 		}
+		sort.Ints(mlist)
 
-		// Находим ближайший день месяца
-		date = findNextMonthDay(date, now, days)
-		return date.Format("20060102"), nil
-
+		// algorithm:
+		t := start
+		if !afterNow(t, now) {
+			t = now
+		}
+		// try from now+1 day onward
+		for i := 0; i < 5000; i++ {
+			t = t.AddDate(0, 0, 1)
+			if !afterNow(t, now) {
+				continue
+			}
+			if !containsInt(mlist, int(t.Month())) {
+				continue
+			}
+			if containsInt(days, monthDayOrNegative(t)) {
+				return t.Format(DateLayout), nil
+			}
+		}
+		return "", errors.New("cannot find next date for m-rule")
 	default:
-		return "", errors.New("unknown repeat rule: " + rule)
+		return "", errors.New("unsupported repeat format")
 	}
 }
 
-// findNextWeekday находит ближайший день недели из списка days (1-7)
-func findNextWeekday(date, now time.Time, days []int) time.Time {
-	// Приводим дату к началу дня
-	date = time.Date(date.Year(), date.Month(), date.Day(), 0, 0, 0, 0, date.Location())
+func weekdayRU(w time.Weekday) int {
+	// 1 - Monday ... 7 - Sunday
+	if w == time.Sunday {
+		return 7
+	}
+	return int(w)
+}
 
-	for {
-		// Проверяем текущий день недели
-		weekday := int(date.Weekday())
-		if weekday == 0 { // Воскресенье
-			weekday = 7
+func parseWeekdays(s string) ([]int, error) {
+	ss := strings.Split(s, ",")
+	days := make([]int, 0, len(ss))
+	for _, x := range ss {
+		v, err := strconv.Atoi(strings.TrimSpace(x))
+		if err != nil || v < 1 || v > 7 {
+			return nil, errors.New("invalid weekday in w-rule")
 		}
+		days = append(days, v)
+	}
+	return days, nil
+}
 
-		// Проверяем, есть ли текущий день в списке дней
-		for _, day := range days {
-			if weekday == day && afterNow(date, now) {
-				return date
-			}
+func containsWeekday(arr []int, v int) bool {
+	for _, x := range arr {
+		if x == v {
+			return true
 		}
-
-		// Переходим к следующему дню
-		date = date.AddDate(0, 0, 1)
 	}
+	return false
 }
 
-// findNextMonthDay находит ближайший день месяца из списка days
-func findNextMonthDay(date, now time.Time, days []int) time.Time {
-	// Приводим дату к началу дня
-	date = time.Date(date.Year(), date.Month(), date.Day(), 0, 0, 0, 0, date.Location())
-
-	for {
-		// Проверяем текущий день месяца
-		currentDay := date.Day()
-
-		// Проверяем, есть ли текущий день в списке дней
-		for _, day := range days {
-			if day > 0 {
-				// Обычный день месяца
-				if currentDay == day && afterNow(date, now) {
-					return date
-				}
-			} else {
-				// Отрицательный день - с конца месяца
-				lastDay := daysInMonth(date.Year(), int(date.Month()))
-				dayFromEnd := lastDay + day + 1
-				if currentDay == dayFromEnd && afterNow(date, now) {
-					return date
-				}
-			}
+func parseMonthDays(s string) ([]int, error) {
+	ss := strings.Split(s, ",")
+	days := make([]int, 0, len(ss))
+	for _, x := range ss {
+		v, err := strconv.Atoi(strings.TrimSpace(x))
+		if err != nil {
+			return nil, errors.New("invalid month day")
 		}
-
-		// Переходим к следующему дню
-		date = date.AddDate(0, 0, 1)
+		if !(v >= 1 && v <= 31) && v != -1 && v != -2 {
+			return nil, errors.New("invalid month day value")
+		}
+		days = append(days, v)
 	}
+	return days, nil
 }
 
-// daysInMonth возвращает количество дней в месяце
-func daysInMonth(year, month int) int {
-	return time.Date(year, time.Month(month)+1, 0, 0, 0, 0, 0, time.UTC).Day()
+func parseMonths(s string) ([]int, error) {
+	ss := strings.Split(s, ",")
+	months := make([]int, 0, len(ss))
+	for _, x := range ss {
+		v, err := strconv.Atoi(strings.TrimSpace(x))
+		if err != nil || v < 1 || v > 12 {
+			return nil, errors.New("invalid month in m-rule")
+		}
+		months = append(months, v)
+	}
+	return months, nil
 }
 
-func NextDateHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
+func monthDayOrNegative(t time.Time) int {
+	// returns day number; if it's last day -> -1, if pre-last -> -2
+	year, month, day := t.Date()
+	lastDay := time.Date(year, month+1, 0, 0, 0, 0, 0, t.Location()).Day()
+	if day == lastDay {
+		return -1
 	}
+	if day == lastDay-1 {
+		return -2
+	}
+	return day
+}
 
+func nextDateHandler(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-
 	nowStr := q.Get("now")
+	date := q.Get("date")
+	rep := q.Get("repeat")
+
+	var now time.Time
+	var err error
 	if nowStr == "" {
-		nowStr = time.Now().Format("20060102")
+		now = time.Now()
+	} else {
+		now, err = time.Parse(DateLayout, nowStr)
+		if err != nil {
+			writeError(w, fmt.Errorf("bad now: %w", err), http.StatusBadRequest)
+			return
+		}
 	}
-	now, err := time.Parse("20060102", nowStr)
+
+	next, err := NextDate(now, date, rep)
 	if err != nil {
-		http.Error(w, "Invalid date format", http.StatusBadRequest)
+		writeError(w, err, http.StatusBadRequest)
 		return
 	}
-
-	dstart := q.Get("date")
-	repeat := q.Get("repeat")
-
-	next, err := NextDate(now, dstart, repeat)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	w.Header().Set("Content-Type", "text/plain")
-	w.Write([]byte(next))
+	writeJSON(w, map[string]string{"date": next})
 }

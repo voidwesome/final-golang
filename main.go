@@ -1,12 +1,11 @@
 package main
 
 import (
+	"final-golang/pkg/api"
+	"final-golang/pkg/db"
 	"log"
 	"net/http"
 	"os"
-
-	"final-golang/pkg/api"
-	"final-golang/pkg/db"
 )
 
 var port = os.Getenv("TODO_PORT")
@@ -27,7 +26,6 @@ func main() {
 	api.DbConn = db.DB
 
 	// Закрываем соединение с БД при завершении
-	defer db.Close()
 
 	// Регистрация эндпоинтов
 	api.Init()
