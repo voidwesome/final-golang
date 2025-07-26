@@ -1,6 +1,7 @@
 package api
 
 import (
+	"log"
 	"net/http"
 )
 
@@ -25,4 +26,5 @@ func taskHandler(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
+	log.Printf("Handled %v request", r)
 }

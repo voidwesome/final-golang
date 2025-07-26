@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"final-golang/pkg/db"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -21,6 +22,7 @@ func AddTaskHandler(w http.ResponseWriter, r *http.Request) {
 
 	var task db.Task
 	err := json.NewDecoder(r.Body).Decode(&task)
+	fmt.Printf("декодирование %v\n", task)
 	if err != nil {
 		writeJSON(w, errorResponse{Error: "Ошибка десериализации JSON"})
 		return
@@ -36,6 +38,7 @@ func AddTaskHandler(w http.ResponseWriter, r *http.Request) {
 	if task.Date == "" || task.Date == "today" {
 		task.Date = time.Now().Format(dateLayout)
 	}
+	fmt.Printf("измененная дата таски - %v\n", task)
 
 	// Validate date and repeat rule
 	err = checkDate(&task)
@@ -43,6 +46,7 @@ func AddTaskHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, errorResponse{Error: err.Error()})
 		return
 	}
+	fmt.Printf("форматрирование - %v\n", task)
 
 	// Add the task to database (важно!)
 	id, err := db.AddTask(db.DB, &task)

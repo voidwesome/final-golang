@@ -15,7 +15,7 @@ var dbPath = os.Getenv("TODO_DBFILE")
 func main() {
 	// Переменная окружения для БД
 	if dbPath == "" {
-		dbPath = "pkg/db/scheduler.db"
+		dbPath = "scheduler.db"
 	}
 
 	// Соединение с БД
