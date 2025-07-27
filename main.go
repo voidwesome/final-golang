@@ -16,17 +16,21 @@ func main() {
 	if dbPath == "" {
 		dbPath = "scheduler.db"
 	}
-
+	log.Printf("Используем БД: %s\n", dbPath)
 	// инициализируем подключение к базе данных
 	if err := db.Init(dbPath); err != nil {
-		log.Fatalf("Не удалось инициализировать БД: %v", err)
+		log.Printf("Ошибка инициализации БД: %v\n", err)
+		log.Fatalf("Не удалось инициализировать БД: %v\n", err)
 	}
 	// закрываем соединение с базой данных при завершении программы
 	defer db.DB.Close()
 
 	api.DbConn = db.DB
 
+	api.Init()
+
 	fs := http.FileServer(http.Dir("./web"))
+	log.Println(fs)
 	http.Handle("/", fs)
 
 	// если порт не задан через переменную окружения, используем значение по умолчанию
@@ -34,9 +38,10 @@ func main() {
 		port = "7540"
 	}
 	addr := ":" + port
+	log.Printf("Запуск сервера на порту %s\n", port)
 
 	// запускаем HTTP-сервер
-	log.Printf("Сервер запущен на %s", addr)
+	log.Printf("Сервер запущен на %s\n", addr)
 	if err := http.ListenAndServe(addr, nil); err != nil {
 		log.Fatalf("Ошибка запуска сервера: %v", err)
 	}

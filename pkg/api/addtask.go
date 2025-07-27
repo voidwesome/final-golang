@@ -71,15 +71,15 @@ func addTaskHandler(w http.ResponseWriter, r *http.Request) {
 
 // checkDate проверяет и корректирует дату задачи и правило повторения.
 func checkDate(task *db.Task) error {
-	nowUTC := time.Now().UTC()
-	nowMoscow := nowUTC.Add(time.Second * moscowOffset)
+	now := time.Now() // текущее локальное время
 
-	nowMoscow = time.Date(
-		nowMoscow.Year(), nowMoscow.Month(), nowMoscow.Day(),
-		0, 0, 0, 0, time.FixedZone("MSK", moscowOffset),
+	// Приводим к "полночь" локального времени
+	todayMidnight := time.Date(
+		now.Year(), now.Month(), now.Day(),
+		0, 0, 0, 0, now.Location(),
 	)
 	if task.Date == "" {
-		task.Date = nowMoscow.Format(dateLayout)
+		task.Date = todayMidnight.Format(dateLayout)
 	}
 
 	parsedDate, err := time.Parse(dateLayout, task.Date)
@@ -88,13 +88,13 @@ func checkDate(task *db.Task) error {
 	}
 
 	//если дата задачи раньше текущей - корректируем её
-	if parsedDate.Before(nowMoscow) {
+	if parsedDate.Before(todayMidnight) {
 		if task.Repeat == "" {
 			// если правило повторения отсутствует - ставим дату на сегодня
-			task.Date = nowMoscow.Format(dateLayout)
+			task.Date = todayMidnight.Format(dateLayout)
 		} else {
 			// иначе вычисляем следующую дату согласно правилу повторения
-			nextDate, err := NextDate(nowMoscow, task.Date, task.Repeat)
+			nextDate, err := NextDate(todayMidnight, task.Date, task.Repeat)
 			if err != nil {
 				return fmt.Errorf("ошибка при вычислении следующей даты для повторения: %w", err)
 			}
