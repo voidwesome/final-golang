@@ -12,110 +12,110 @@ import (
 	"time"
 )
 
+// DbConn - глобальная переменная для подключения к базе данных
 var DbConn *sql.DB
 
+// dateLayout - формат даты для всего приложения (ГГГГММДД)
 const dateLayout = "20060102"
 
+// moscowOffset - смещение часового пояса Москвы в секундах (UTC+3)
 const moscowOffset = 3 * 60 * 60 // 3 часа в секундах
 
+// addTaskHandler обрабатывает POST-запрос на добавление новой задачи.
 func addTaskHandler(w http.ResponseWriter, r *http.Request) {
+
+	// разрешён только метод POST
 	if r.Method != http.MethodPost {
-		http.Error(w, "Only POST allowed", http.StatusMethodNotAllowed)
+		http.Error(w, "Разрешён только POST", http.StatusMethodNotAllowed)
 		return
 	}
 
 	var task db.Task
+	// декодируем JSON из тела запроса в структуру задачи
 	err := json.NewDecoder(r.Body).Decode(&task)
-	fmt.Printf("декодирование %v\n", task)
 	if err != nil {
 		writeJSON(w, errorResponse{Error: "Ошибка десериализации JSON"})
 		return
 	}
 
-	// Validate task title (mandatory field)
+	// проверяем, что заголовок задачи указан
 	if task.Title == "" {
 		writeJSON(w, errorResponse{Error: "Не указан заголовок задачи"})
 		return
 	}
 
-	// Handle empty date or "today"
+	// обработка пустой даты или специального значения "today"
 	if task.Date == "" || task.Date == "today" {
+
+		// устанавливаем текущую дату в формате dateLayout
 		task.Date = time.Now().Format(dateLayout)
 	}
-	fmt.Printf("измененная дата таски - %v\n", task)
 
-	// Validate date and repeat rule
+	// проверяем корректность даты и правила повторения
 	err = checkDate(&task)
 	if err != nil {
 		writeJSON(w, errorResponse{Error: err.Error()})
 		return
 	}
-	fmt.Printf("форматрирование - %v\n", task)
 
-	// Add the task to database (важно!)
+	// добавляем задачу в базу данных (важный шаг!)
 	id, err := db.AddTask(&task)
 	if err != nil {
 		writeJSON(w, errorResponse{Error: "Ошибка добавления в базу"})
 		return
 	}
 
+	// возвращаем ID новой задачи в JSON-ответе
 	writeJSON(w, map[string]string{"id": strconv.FormatInt(id, 10)})
 }
 
+// checkDate проверяет и корректирует дату задачи и правило повторения.
 func checkDate(task *db.Task) error {
 	nowUTC := time.Now().UTC()
-
-	// Добавляем сдвиг
 	nowMoscow := nowUTC.Add(time.Second * moscowOffset)
 
-	// Обнуляем время по московскому времени
 	nowMoscow = time.Date(
 		nowMoscow.Year(), nowMoscow.Month(), nowMoscow.Day(),
 		0, 0, 0, 0, time.FixedZone("MSK", moscowOffset),
 	)
-
-	// Если дата пуста, устанавливаем её на текущую дату
 	if task.Date == "" {
 		task.Date = nowMoscow.Format(dateLayout)
 	}
 
-	// Проверяем формат даты (ГГГГММДД)
 	parsedDate, err := time.Parse(dateLayout, task.Date)
 	if err != nil {
 		return errors.New("некорректный формат даты. Ожидается ГГГГММДД")
 	}
 
-	// Если дата меньше текущей — корректируем её
+	//если дата задачи раньше текущей - корректируем её
 	if parsedDate.Before(nowMoscow) {
 		if task.Repeat == "" {
-			fmt.Printf("дата если правило - пустой %s\n", task.Date)
-			// Если нет правила повторения — ставим на сегодня
+			// если правило повторения отсутствует - ставим дату на сегодня
 			task.Date = nowMoscow.Format(dateLayout)
 		} else {
-			fmt.Printf("дата иначе - %s\n", task.Date)
-			// Есть повторение — вычисляем следующую дату
+			// иначе вычисляем следующую дату согласно правилу повторения
 			nextDate, err := NextDate(nowMoscow, task.Date, task.Repeat)
 			if err != nil {
 				return fmt.Errorf("ошибка при вычислении следующей даты для повторения: %w", err)
 			}
-			fmt.Printf("следующая дата %s\n", nextDate)
 
 			task.Date = nextDate
 		}
 	}
 
-	// Проверка правила повторения (если оно есть)
+	// проверяем корректность правила повторения (если оно есть)
 	if task.Repeat == "" {
 		return nil
 	}
 
+	// разбиваем правило повторения на части
 	parts := strings.Fields(strings.TrimSpace(task.Repeat))
 	if len(parts) == 0 {
 		return errors.New("некорректное правило повторения: пусто")
 	}
 
 	switch parts[0] {
-	case "d":
+	case "d": // повторение каждые N дней
 		if len(parts) != 2 {
 			return errors.New("формат d должен быть: d <число>")
 		}
@@ -123,11 +123,11 @@ func checkDate(task *db.Task) error {
 		if err != nil || n < 1 || n > 400 {
 			return errors.New("некорректный интервал дней для d (ожидается 1-400)")
 		}
-	case "y":
+	case "y": // повторение каждый год
 		if len(parts) != 1 {
 			return errors.New("формат y не должен содержать параметры")
 		}
-	case "w":
+	case "w": // повторение по дням недели
 		if len(parts) != 2 {
 			return errors.New("формат w должен быть: w <дни_недели>")
 		}

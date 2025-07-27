@@ -2,7 +2,6 @@ package tests
 
 import (
 	"fmt"
-	"log"
 	"net/url"
 	"strings"
 	"testing"
@@ -38,19 +37,14 @@ func TestNextDate(t *testing.T) {
 		{"20231225", "d 12", `20240130`},
 		{"20240228", "d 1", "20240229"},
 	}
-	log.Printf("Тестирование %d вариантов", len(tbl))
 	check := func() {
 		for _, v := range tbl {
-			log.Printf("Проверка %v", v)
 			urlPath := fmt.Sprintf("api/nextdate?now=20240126&date=%s&repeat=%s",
 				url.QueryEscape(v.date), url.QueryEscape(v.repeat))
 			get, err := getBody(urlPath)
-			log.Printf("Ответ: %s", get)
 			assert.NoError(t, err)
 			next := strings.TrimSpace(string(get))
-			log.Printf("Следующая дата: %s", next)
 			_, err = time.Parse("20060102", next)
-			log.Printf("Проверка формата даты: %v", err)
 			if err != nil && len(v.want) == 0 {
 				continue
 			}

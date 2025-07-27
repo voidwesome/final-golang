@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"net/http/cookiejar"
 	"strconv"
@@ -93,20 +92,15 @@ func TestAddTask(t *testing.T) {
 		{"20240112", "Заголовок", "", "w"},
 		{"20240212", "Заголовок", "", "ooops"},
 	}
-	log.Printf("FullNextDate: %v", FullNextDate)
 	for _, v := range tbl {
-		log.Printf("	Проверка задачи: %v", v)
 		m, err := postJSON("api/task", map[string]any{
 			"date":    v.date,
 			"title":   v.title,
 			"comment": v.comment,
 			"repeat":  v.repeat,
 		}, http.MethodPost)
-		log.Printf("	Ответ: %v", m)
 		assert.NoError(t, err)
-		log.Printf("	Ответ: %v", m)
 		e, ok := m["error"]
-		log.Printf("	Ошибка: %v", e)
 		assert.False(t, !ok || len(fmt.Sprint(e)) == 0,
 			"Ожидается ошибка для задачи %v", v)
 	}
@@ -115,24 +109,18 @@ func TestAddTask(t *testing.T) {
 
 	check := func() {
 		for _, v := range tbl {
-			log.Printf("	Проверка задачи: %v", v)
 			today := v.date == "today"
-			log.Printf("	Сегодня: %v", today)
 			if today {
 				v.date = now.Format(`20060102`)
 			}
-			log.Printf("postJSON %v", v)
 			m, err := postJSON("api/task", map[string]any{
 				"date":    v.date,
 				"title":   v.title,
 				"comment": v.comment,
 				"repeat":  v.repeat,
 			}, http.MethodPost)
-			log.Printf("	Ответ: %v", m)
 			assert.NoError(t, err)
-			log.Printf("	Ответ: %v", m)
 			e, ok := m["error"]
-			log.Printf("	Ошибка: %v", e)
 			if ok && len(fmt.Sprint(e)) > 0 {
 				t.Errorf("Неожиданная ошибка %v для задачи %v", e, v)
 				continue
@@ -140,16 +128,13 @@ func TestAddTask(t *testing.T) {
 			var task Task
 			var mid any
 			mid, ok = m["id"]
-			log.Printf("	Получен id: %v", mid)
 			if !ok {
 				t.Errorf("Не возвращён id для задачи %v", v)
 				continue
 			}
 			id := fmt.Sprint(mid)
 
-			log.Printf("	Проверка задачи в БД: %v", id)
 			err = db.Get(&task, `SELECT * FROM scheduler WHERE id=?`, id)
-			log.Printf("	Задача: %v", task)
 			assert.NoError(t, err)
 			assert.Equal(t, id, strconv.FormatInt(task.ID, 10))
 

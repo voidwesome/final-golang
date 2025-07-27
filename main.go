@@ -8,38 +8,34 @@ import (
 	"os"
 )
 
-var port = os.Getenv("TODO_PORT")
-var dbPath = os.Getenv("TODO_DBFILE")
+var port = os.Getenv("TODO_PORT")     // порт для запуска веб-сервера
+var dbPath = os.Getenv("TODO_DBFILE") // путь к файлу базы данных
 
 func main() {
-	// Переменная окружения для БД
+	// если путь к БД не задан через переменную окружения, используем значение по умолчанию
 	if dbPath == "" {
 		dbPath = "scheduler.db"
 	}
 
-	// Соединение с БД
+	// инициализируем подключение к базе данных
 	if err := db.Init(dbPath); err != nil {
 		log.Fatalf("Не удалось инициализировать БД: %v", err)
 	}
+	// закрываем соединение с базой данных при завершении программы
+	defer db.DB.Close()
 
-	// Передаем соединение в API
 	api.DbConn = db.DB
 
-	// Закрываем соединение с БД при завершении
-
-	// Регистрация эндпоинтов
-	api.Init()
-
-	// Настройка статики
 	fs := http.FileServer(http.Dir("./web"))
 	http.Handle("/", fs)
 
-	// Запуск сервера
+	// если порт не задан через переменную окружения, используем значение по умолчанию
 	if port == "" {
 		port = "7540"
 	}
 	addr := ":" + port
 
+	// запускаем HTTP-сервер
 	log.Printf("Сервер запущен на %s", addr)
 	if err := http.ListenAndServe(addr, nil); err != nil {
 		log.Fatalf("Ошибка запуска сервера: %v", err)
