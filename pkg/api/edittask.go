@@ -1,8 +1,10 @@
 package api
 
 import (
+	"database/sql"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 
 	"final-golang/pkg/db"
@@ -15,6 +17,7 @@ func editTaskHandler(w http.ResponseWriter, r *http.Request) {
 
 	// декодируем JSON из тела запроса в структуру задачи
 	if err := json.NewDecoder(r.Body).Decode(&t); err != nil {
+		log.Printf("ошибка: %v\n", err)           // пишем в лог полную ошибку
 		writeError(w, err, http.StatusBadRequest) // ошибка десериализации
 		return
 	}
@@ -39,7 +42,11 @@ func editTaskHandler(w http.ResponseWriter, r *http.Request) {
 
 	// обновляем задачу в базе данных
 	if err := db.UpdateTask(&t); err != nil {
-		writeError(w, err, http.StatusNotFound) // ошибка обновления задачи
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, err, http.StatusNotFound) // задача не найдена
+		} else {
+			writeError(w, err, http.StatusInternalServerError) // ошибка сервера
+		}
 		return
 	}
 

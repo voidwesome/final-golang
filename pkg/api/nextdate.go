@@ -3,6 +3,7 @@ package api
 import (
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -21,6 +22,7 @@ func NextDate(now time.Time, dstart string, repeat string) (string, error) {
 	// преобразуем дату начала в тип time.Time
 	start, err := time.Parse(DateLayout, dstart)
 	if err != nil {
+		log.Printf("ошибка преобразования даты начала %q: %v\n", dstart, err)
 		return "", fmt.Errorf("неверная дата начала: %w", err)
 	}
 

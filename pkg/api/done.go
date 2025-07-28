@@ -1,6 +1,7 @@
 package api
 
 import (
+	"log"
 	"net/http"
 	"time"
 
@@ -27,6 +28,7 @@ func MarkDoneHandler(w http.ResponseWriter, r *http.Request) {
 	// получаем задачу из базы данных
 	t, err := db.GetTask(id)
 	if err != nil {
+		log.Printf("ошибка получения задачи %s: %v", id, err)
 		writeJSON(w, errorResponse{Error: "Задача не найдена"})
 		return
 	}

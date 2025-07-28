@@ -6,6 +6,7 @@ import (
 	"errors"
 	"final-golang/pkg/db"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -34,10 +35,10 @@ func addTaskHandler(w http.ResponseWriter, r *http.Request) {
 	// декодируем JSON из тела запроса в структуру задачи
 	err := json.NewDecoder(r.Body).Decode(&task)
 	if err != nil {
+		w.WriteHeader(http.StatusBadRequest) // выставляем код ошибки
 		writeJSON(w, errorResponse{Error: "Ошибка десериализации JSON"})
 		return
 	}
-
 	// проверяем, что заголовок задачи указан
 	if task.Title == "" {
 		writeJSON(w, errorResponse{Error: "Не указан заголовок задачи"})
@@ -61,7 +62,12 @@ func addTaskHandler(w http.ResponseWriter, r *http.Request) {
 	// добавляем задачу в базу данных (важный шаг!)
 	id, err := db.AddTask(&task)
 	if err != nil {
-		writeJSON(w, errorResponse{Error: "Ошибка добавления в базу"})
+		// логируем полную ошибку
+		log.Printf("ошибка добавления задачи: %v\n", err)
+
+		// устанавливаем статус HTTP и возвращаем JSON с сообщением
+		w.WriteHeader(http.StatusInternalServerError)
+		writeJSON(w, errorResponse{Error: "Ошибка добавления задачи"})
 		return
 	}
 
@@ -84,6 +90,7 @@ func checkDate(task *db.Task) error {
 
 	parsedDate, err := time.Parse(dateLayout, task.Date)
 	if err != nil {
+		log.Printf("ошибка разбора даты %q: %v\n", task.Date, err)
 		return errors.New("некорректный формат даты. Ожидается ГГГГММДД")
 	}
 
@@ -96,6 +103,7 @@ func checkDate(task *db.Task) error {
 			// иначе вычисляем следующую дату согласно правилу повторения
 			nextDate, err := NextDate(todayMidnight, task.Date, task.Repeat)
 			if err != nil {
+				log.Printf("ошибка вычисления следующей даты: %v\n", err)
 				return fmt.Errorf("ошибка при вычислении следующей даты для повторения: %w", err)
 			}
 

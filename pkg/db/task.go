@@ -47,6 +47,9 @@ func Tasks(limit int) ([]*Task, error) {
 		}
 		list = append(list, t)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	// если задач нет, возвращаем пустой список (а не nil)
 	if list == nil {
 		list = []*Task{}
